@@ -2,6 +2,12 @@
 
 Auriga is a small, practical parking operations app for busy attendant teams. It runs on plain Python, stores live garage data in SQLite, and serves a browser UI from the same process. The idea is simple: check vehicles in, assign the right space, calculate a fair fee, and keep the shift calm.
 
+## UI sample
+
+The sample below shows the landing page and attendant dashboard style:
+
+![Auriga Parking dashboard sample](static/ui-sample.svg)
+
 ## API endpoints
 
 The browser uses these JSON endpoints. Authentication endpoints are public unless noted otherwise. All other API endpoints require:
@@ -259,5 +265,6 @@ The server cleans this input and stores valid first-hour, additional-hour, and d
 - `static/index.html` — landing page and dashboard UI
 - `static/styles.css` — styling and layout
 - `static/app.js` — browser logic for login, check-in, pricing tools, and operations
+- `static/ui-sample.svg` — README visual sample of the landing page and dashboard
 - `REASONING.md` — short decisions and notes
 - `AI_LOGS.md` — project conversation log
