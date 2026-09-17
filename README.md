@@ -2,6 +2,35 @@
 
 Auriga is a small, practical parking operations app for busy attendant teams. It runs on plain Python, stores live garage data in SQLite, and serves a browser UI from the same process. The idea is simple: check vehicles in, assign the right space, calculate a fair fee, and keep the shift calm.
 
+## API endpoints
+
+The browser uses these JSON endpoints. Authentication endpoints are public unless noted otherwise. All other API endpoints require:
+
+```http
+Authorization: Bearer <token>
+```
+
+| Method | Endpoint | Authentication | Purpose |
+|---|---|---|---|
+| GET | `/api/health` | Public | Check that the server is healthy |
+| POST | `/api/auth/register` | Public | Create a user account |
+| POST | `/api/auth/login` | Public | Log in and receive a bearer token |
+| POST | `/api/auth/logout` | Token | Revoke the current token |
+| GET | `/api/auth/me` | Optional | Get the signed-in user, if available |
+| GET | `/api/garages` | Token | List garages |
+| GET | `/api/dashboard` | Token | Get capacity, active vehicles, and overdue sessions |
+| GET | `/api/spots` | Token | List spaces; filter with `garage_id`, `type`, or `status` |
+| GET | `/api/sessions` | Token | Search, sort, and paginate parking sessions |
+| POST | `/api/sessions/check-in` | Token | Assign a compatible space and create a session |
+| POST | `/api/sessions/:id/check-out` | Token | Complete a session, calculate its fee, and free its space |
+| POST | `/api/sessions/:id/transfer` | Token | Update the plate during a valet handoff |
+| GET | `/api/rates` | Token | List the current rate cards |
+| POST | `/api/rates/import` | Token | Clean and import a rate card |
+| POST | `/api/clock` | Token | Close sessions parked for at least 24 hours |
+| POST | `/clock` | Token | Alias for `/api/clock` |
+
+`GET /api/sessions` supports `search`, `status`, `page`, `page_size`, `sort` (`checked_in_at`, `plate`, `spot`, or `fee`), and `direction` (`asc` or `desc`). `GET /api/spots` supports `garage_id`, `type` (`compact`, `standard`, or `ev`), and `status` (`available` or `occupied`).
+
 ## Requirements
 
 - Python 3.9 or newer
@@ -199,29 +228,6 @@ That is not an Auriga server address. Open the forwarded URL from the VS Code Po
 ### The page loads but login fails
 
 Create a new account from the registration tab. The password must contain at least six characters. If the database was copied from another computer, check that the server is running from the project folder containing the intended `auriga.db`.
-
-## Useful API endpoints
-
-Protected endpoints expect:
-
-```http
-Authorization: Bearer <token>
-```
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| POST | `/api/auth/register` | Create a user |
-| POST | `/api/auth/login` | Log in and receive a token |
-| POST | `/api/auth/logout` | Revoke the current token |
-| GET | `/api/auth/me` | Get the signed-in user |
-| GET | `/api/dashboard` | Garage capacity and session totals |
-| GET | `/api/spots` | List spaces with filters |
-| GET | `/api/sessions` | Search and paginate sessions |
-| POST | `/api/sessions/check-in` | Assign a compatible spot |
-| POST | `/api/sessions/:id/check-out` | Close a session and bill it |
-| POST | `/api/sessions/:id/transfer` | Move an active session to a new plate |
-| POST | `/api/rates/import` | Import a cleaned or messy rate card |
-| POST | `/clock` | Close any session parked over 24 hours |
 
 ## Messy rate-card example
 
