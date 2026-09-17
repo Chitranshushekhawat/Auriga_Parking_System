@@ -248,7 +248,14 @@ The server cleans this input and stores valid first-hour, additional-hour, and d
 
 ## Project files
 
-- `server.py` — server, SQLite schema, auth, pricing, and API routes
+- `server.py` — small launcher that starts the HTTP server
+- `app/config.py` — project paths and runtime configuration
+- `app/database.py` — SQLite connection, schema, seed data, and migrations
+- `app/auth.py` — password hashing and password verification
+- `app/pricing.py` — fee calculation and rate-card cleaning
+- `app/operations.py` — checkout finalisation and nightly close logic
+- `app/errors.py` — shared API error type and HTTP status handling
+- `app/http_handler.py` — REST routes, static files, authentication, and request handling
 - `static/index.html` — landing page and dashboard UI
 - `static/styles.css` — styling and layout
 - `static/app.js` — browser logic for login, check-in, pricing tools, and operations
