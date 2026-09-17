@@ -1,59 +1,96 @@
 # Auriga Parking
 
-Auriga is a full-stack parking operations tool for attendants working busy multi-level garages. It persists garages, spots, users, sessions, and fees in SQLite; provides authenticated REST APIs; and serves a responsive browser UI from the same Python process.
+Auriga is a small, practical parking operations app for busy attendant teams. It runs on plain Python, stores live garage data in SQLite, and serves a browser UI from the same process. The idea is simple: check vehicles in, assign the right space, calculate a fair fee, and keep the shift calm.
+
+## What it does
+
+- Tracks garage capacity and live session totals
+- Enforces vehicle-to-spot compatibility, especially EV rules
+- Prevents double-booking during check-in with an immediate SQLite transaction
+- Calculates pricing using first-hour, additional-hour, and daily-cap logic
+- Supports searching, sorting, and pagination for parking history
+- Includes a nightly close job for sessions parked longer than 24 hours
+- Lets attendants transfer an open session to a different plate for valet-style handoff
+- Accepts messy rate-card imports and cleans them into valid garage rates
 
 ## Requirements
 
 - Python 3.9+
 - No external packages required
 
-## Setup and run
+## Run it locally
 
-```powershell
-py server.py
+```bash
+cd /workspaces/Auriga_Parking_System
+python3 server.py
 ```
 
-Open http://127.0.0.1:8000. The first startup creates `auriga.db` and seeds a demo garage with compact, standard, and EV spots. Set a different port with `$env:PORT=8080; py server.py`.
+Then open:
 
-To reset local data, stop the server and delete `auriga.db`; it will be recreated on the next run.
+- http://127.0.0.1:8000
 
-## Debugging
+If port 8000 is already in use, run:
 
-The server logs each HTTP request in the terminal. API errors return JSON in the form `{ "error": "..." }`. The browser stores the bearer token in local storage. Use the browser developer console and Network panel to inspect API calls.
+```bash
+PORT=8001 python3 server.py
+```
 
-## Product behavior
+The first startup creates `auriga.db` and seeds a demo garage with compact, standard, and EV spots.
 
-- EV vehicles can only receive EV spots.
-- Compact and standard vehicles receive a compatible compact or standard spot.
-- Spot assignment happens inside an immediate SQLite transaction, preventing double assignment under concurrent check-ins.
-- Billing rounds any part-hour up to the next hour.
-- The first hour uses the first-hour rate, additional hours use the cheaper additional-hour rate, and every 24-hour period is capped at the daily cap.
-- Default demo rates are 80 pence for the first hour, 40 pence per additional hour, and 240 pence daily maximum. Values are stored per garage.
+## Reset data
 
-## REST API
+To reset the local database:
 
-All endpoints below accept and return JSON. Protected endpoints require `Authorization: Bearer <token>`.
+```bash
+rm auriga.db
+python3 server.py
+```
+
+## Useful API endpoints
+
+Protected endpoints expect:
+
+```http
+Authorization: Bearer <token>
+```
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| POST | `/api/auth/register` | Create a user account |
-| POST | `/api/auth/login` | Authenticate and receive a bearer token |
+| POST | `/api/auth/register` | Create a user |
+| POST | `/api/auth/login` | Log in and receive a token |
 | POST | `/api/auth/logout` | Revoke the current token |
-| GET | `/api/auth/me` | Get the current user, if authenticated |
-| GET | `/api/garages` | List garages |
-| GET | `/api/dashboard` | Get garage capacity and live vehicle totals |
-| GET | `/api/spots` | List spots; filter with `garage_id`, `type`, or `status` |
-| GET | `/api/sessions` | Search and paginate parking sessions |
-| POST | `/api/sessions/check-in` | Assign a compatible spot and create an active session |
-| POST | `/api/sessions/:id/check-out` | Complete a session, calculate its fee, and free its spot |
+| GET | `/api/auth/me` | Get the signed-in user |
+| GET | `/api/dashboard` | Garage capacity and session totals |
+| GET | `/api/spots` | List spaces with filters |
+| GET | `/api/sessions` | Search and paginate sessions |
+| POST | `/api/sessions/check-in` | Assign a compatible spot |
+| POST | `/api/sessions/:id/check-out` | Close a session and bill it |
+| POST | `/api/sessions/:id/transfer` | Move an active session to a new plate |
+| POST | `/api/rates/import` | Import a cleaned or messy rate card |
+| POST | `/clock` | Close any session parked over 24 hours |
 
-`GET /api/sessions` supports `search`, `status`, `page`, `page_size`, `sort` (`checked_in_at`, `plate`, `spot`, `fee`), and `direction` (`asc` or `desc`).
+## Messy rate-card example
+
+```json
+{
+  "garage_id": 1,
+  "rates": "compact: £2.80\nstandard: 310p\nEV: 4.40 GBP\nnoise: junk"
+}
+```
+
+The server cleans this input and stores valid first-hour, additional-hour, and daily-cap values per spot type.
+
+## Notes
+
+- The app stores the token in browser local storage.
+- Errors come back as JSON like `{ "error": "..." }`.
+- The server logs HTTP requests in the terminal for quick debugging.
 
 ## Project files
 
-- `server.py` - standard-library HTTP server, SQLite schema, auth, fee calculation, and API routes.
-- `static/index.html` - landing page and attendant dashboard markup.
-- `static/styles.css` - responsive visual system.
-- `static/app.js` - API client and dashboard interactions.
-- `REASONING.md` - implementation decisions and testing notes.
-- `AI_LOGS.md` - conversation record for this submission.
+- `server.py` — server, SQLite schema, auth, pricing, and API routes
+- `static/index.html` — landing page and dashboard UI
+- `static/styles.css` — styling and layout
+- `static/app.js` — browser logic for login, check-in, pricing tools, and operations
+- `REASONING.md` — short decisions and notes
+- `AI_LOGS.md` — project conversation log

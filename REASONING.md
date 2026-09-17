@@ -1,52 +1,91 @@
 # Reasoning
 
-## How I approached it
+## Business need
 
-The workspace was empty, so I started by looking at the simplest way to deliver a complete product that another person could run without a long setup process. Python 3.11 was available, but Node.js and npm were not. I therefore used Python's standard library, SQLite, and a small static frontend. This keeps the project easy to inspect and means the application can be started with `py server.py`.
+A busy car park has to answer a few questions quickly: which spaces are free, where a vehicle is parked, how long it has stayed, and what it should pay. Handling this with paper notes or separate spreadsheets can cause double-booked spaces, lost vehicle details, incorrect fees, and a difficult shift handover.
 
-The most important part of the product is not the landing page; it is making sure a car gets the right spot and the right bill. I treated those as the core business rules and built the rest of the application around them.
+Auriga is designed to give attendants one reliable place to manage those tasks. The system needs to be quick at the barrier, strict about parking rules, and clear enough that another person can understand the current state of the garage. It also needs to keep a history of completed sessions so the business has a useful record of vehicles and payments.
 
-## Data model
+## Technology stack
 
-I used SQLite because it gives the application real persistence and transaction support without requiring a separate database server. The main tables are:
+This was built to stay simple and reliable. The technology stack is:
 
-- `garages` stores the garage name, address, and its pricing rules.
-- `spots` stores each numbered space, its type, and whether it is currently occupied.
-- `parking_sessions` stores the vehicle, driver, assigned spot, check-in time, checkout time, and final fee.
-- `users` and `auth_tokens` support registration and authenticated API access.
+- **Python 3** for the backend because it is readable, dependable, and available without extra packages.
+- **ThreadingHTTPServer** from Python's standard library to serve the API and frontend from one process.
+- **SQLite** for storage because the app needs real persistence and safe transactions, but not a separate database server.
+- **HTML, CSS, and vanilla JavaScript** for the frontend because the dashboard is small, fast, and does not need a large framework.
+- **JSON REST endpoints** to connect the browser to the backend in a clear way.
+- **Bearer tokens** for login sessions so protected parking operations require an authenticated user.
 
-Garage-specific pricing and spot ownership are stored in the database instead of being constants in the code. The seeded garage makes the project immediately usable, but the structure is ready for more garages later.
+I chose this stack because it is easy to run, easy to explain, and easy to test. A new user can start the whole system with one Python command, while the structure is still strong enough for check-ins, billing, and daily operations. Avoiding external packages also makes the project easier to install on a small office computer or in a classroom environment.
 
-## Check-in and spot safety
+## Users and workflow
 
-Spot allocation was the area where a small implementation mistake could cause the biggest operational problem. A simple “find a free spot, then update it” sequence can allow two requests to select the same space. To avoid that, check-in starts an `IMMEDIATE` SQLite transaction, selects a compatible available spot, marks it occupied, and creates the parking session before committing.
+The main user is a parking attendant. Their normal workflow is:
 
-EVs are deliberately handled as a strict compatibility rule: an EV can only receive an EV spot. Compact and standard vehicles can use compact or standard spaces. If no compatible spot exists, the API returns a conflict instead of silently assigning an unsuitable space. The API also rejects a plate that already has an active session.
+1. Sign in to protect garage operations from unauthorised users.
+2. Check a vehicle in by entering its plate, driver name, and vehicle type.
+3. Give the driver a compatible space number.
+4. Search the parking log when a driver returns or asks where a vehicle is located.
+5. Check the vehicle out and collect the calculated fee.
+6. Use the overnight close, rate import, or plate transfer tools when the shift requires them.
 
-## Fee calculation
+The garage manager benefits from the same workflow because the dashboard shows capacity, active vehicles, overdue sessions, rates, and completed records without needing a separate reporting system.
 
-At checkout, the elapsed stay is converted into billable hours using a ceiling operation. That means a stay of 20 minutes is charged as one hour, while a stay of 1 hour and 5 minutes is charged as two hours. The first hour uses the garage's first-hour rate, later hours use the cheaper additional-hour rate, and each complete day is limited by the daily cap.
+## Business logic
 
-The final fee is written to the completed session. This preserves the original transaction even after the spot becomes available again and gives the attendant a useful history for searching and sorting.
+### Space assignment
 
-## Interface choices
+Every space has a type: compact, standard, or EV. EV vehicles can only use EV spaces because they may need a charger. Compact and standard vehicles can use either a compact or standard space. The system prefers the same type where possible, then uses another compatible space.
 
-I combined the product landing page and the attendant dashboard into one application. The top of the page explains who Auriga is for and what it solves. After signing in, the attendant can see current capacity, including EV availability, check in a vehicle, search by plate or driver, sort the log, paginate through older records, and check vehicles out.
+The plate is normalised to uppercase and an active plate cannot be checked in twice. If there is no compatible space, the operation fails with a clear error instead of assigning the wrong space.
 
-The dashboard does not use demo data after login. It reads its metrics and parking sessions from the REST API, which keeps the visible state tied to the database and makes the interface representative of the actual product.
+### Preventing double booking
 
-## Testing
+Finding a free space and marking it occupied must happen as one database operation. Check-in starts an immediate SQLite transaction, selects an available compatible space, marks it occupied, and creates the session before committing. This prevents two attendants or two browser requests from receiving the same space.
 
-I first checked that the backend imported correctly and could create its schema:
+### Pricing and billing
 
-```powershell
-py -c "import server; server.init_db(); print('schema ok')"
-```
+Each garage has rates for the first hour, additional hours, and a daily maximum. Any part of an hour is rounded up, so a stay of 20 minutes is charged as one hour. Later hours use the additional-hour rate, and each 24-hour period is limited by the daily cap.
 
-Then I ran the server and tested the main workflow over HTTP with a fresh account. The test covered registration, login, dashboard loading, EV check-in, searching for the generated plate, and checkout. The EV was assigned an EV spot, the search returned one matching session, and checkout returned a one-hour fee of 80 pence.
+The fee is calculated at checkout and stored on the completed session. This is important because the record should keep the amount that was actually charged even after the space becomes available again.
 
-I also ran `py -m py_compile server.py` and checked the backend for editor diagnostics. Both checks completed without errors.
+### Checkout and capacity
 
-## What I would improve next
+Checkout only works for an active session. It calculates the fee, records the checkout time, changes the session to completed, and frees the assigned space. The dashboard then shows the updated capacity and active vehicle count.
 
-For a production deployment, I would move the database to a managed service if multiple garage sites needed to write concurrently, add HTTPS and stronger session controls, add database migrations, and introduce structured logging and rate limiting. I would also add automated tests around fee boundaries, daily-cap behavior, concurrent check-ins, and a full browser test suite. Those improvements are valuable, but the current implementation keeps the submission compact and runnable with no external dependencies.
+### Nightly close
+
+The nightly clock finds active sessions that have been parked for at least 24 hours. It calculates their fee using the same billing rules, completes them, and releases their spaces. This prevents forgotten sessions from remaining active forever and gives staff a clear way to close the previous day's work.
+
+### Plate transfer
+
+Sometimes a valet handoff or registration correction happens after check-in. A transfer updates the plate, and optionally the driver name, while keeping the same space and original check-in time. The new plate is checked against other active sessions so two live vehicles cannot share the same identifier.
+
+### Rate-card cleaning
+
+Rate cards do not always arrive in one clean format. The import accepts labels such as `compact`, `standard`, and `EV`, and values such as `£2.80`, `310p`, or `4.40 GBP`. The server extracts valid values, converts them to pence, derives additional-hour and daily-cap values, and stores the result per garage and vehicle type. Invalid lines are ignored rather than being written as unreliable prices.
+
+## Data and API flow
+
+The browser sends JSON requests to the Python server. The server authenticates the request, validates the input, applies the business rule, updates SQLite, and returns JSON for the dashboard to display.
+
+SQLite stores users, login tokens, garages, spaces, rate cards, and parking sessions. The important relationships are that a garage owns its spaces and rates, and a parking session records the space used by one vehicle. Completed sessions remain in the database as history instead of being deleted.
+
+This separation keeps the rules in the backend rather than trusting the browser. The frontend is responsible for collecting input and showing results, but the server remains responsible for authentication, space safety, pricing, and data consistency.
+
+The main rules are the important part: compatible spot assignment, safe transactions, and fair billing. That’s why the app stores rates and spot ownership in SQLite, and why check-in uses an immediate transaction before marking a space occupied.
+
+The extra twists fit the same pattern. A messy rate card gets cleaned before writing to the database, the nightly clock closes any session parked longer than a day, and a transfer keeps the same spot and check-in time while updating the plate.
+
+## Why the interface is simple
+
+The dashboard is intentionally thin and practical. An attendant is usually working quickly, so the main screen shows capacity, check-in, the parking log, and operational controls without unnecessary pages. Search, sorting, and pagination make older records easy to find without loading the whole history at once.
+
+The landing page explains the product, while the protected dashboard handles real garage work. This keeps public information separate from private operational data.
+
+## Limits and next steps
+
+The current design is a good fit for one local garage or a small demonstration. For a larger production system, I would add database migrations, automated tests for billing boundaries and concurrent check-ins, HTTPS, stronger token expiry, user roles, audit logs, and support for multiple garages in the same account. Those changes would improve scale and security without changing the main business rules.
+
+I kept the implementation small enough to read and debug in one sitting, but flexible enough to extend if the garage grows.

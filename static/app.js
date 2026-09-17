@@ -2,12 +2,28 @@ const $ = (selector) => document.querySelector(selector);
 let token = localStorage.getItem('auriga_token');
 let mode = 'login';
 let page = 1;
+
 const api = async (path, options = {}) => {
-  const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) } });
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    }
+  });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Something went wrong');
   return data;
 };
+
+const setStatus = (message, isError = false) => {
+  const node = $('#system-message');
+  if (!node) return;
+  node.textContent = message || '';
+  node.classList.toggle('error', isError);
+};
+
 const setAuthMode = (next) => {
   mode = next;
   document.querySelectorAll('.auth-tabs button').forEach((button) => button.classList.toggle('active', button.dataset.mode === mode));
@@ -35,8 +51,14 @@ async function showApp() {
 }
 async function refresh() { await Promise.all([loadDashboard(), loadSessions()]); }
 async function loadDashboard() {
-  const { garage, counts, active_sessions } = await api('/api/dashboard');
-  const cards = [['Live vehicles', active_sessions, 'currently inside'], ['Compact', `${counts.compact?.available || 0} / ${counts.compact?.total || 0}`, 'spots available'], ['Standard', `${counts.standard?.available || 0} / ${counts.standard?.total || 0}`, 'spots available'], ['EV charger', `${counts.ev?.available || 0} / ${counts.ev?.total || 0}`, 'spots available']];
+  const { garage, counts, active_sessions, overdue_sessions } = await api('/api/dashboard');
+  const cards = [
+    ['Live vehicles', active_sessions, 'currently inside'],
+    ['Over 24h', overdue_sessions || 0, 'sessions overdue'],
+    ['Compact', `${counts.compact?.available || 0} / ${counts.compact?.total || 0}`, 'spots available'],
+    ['Standard', `${counts.standard?.available || 0} / ${counts.standard?.total || 0}`, 'spots available'],
+    ['EV charger', `${counts.ev?.available || 0} / ${counts.ev?.total || 0}`, 'spots available']
+  ];
   $('#metrics').innerHTML = cards.map(([label, value, note]) => `<div class="metric"><label>${label}</label><strong>${value}</strong><small>${note}</small></div>`).join('');
 }
 async function loadSessions() {
@@ -48,5 +70,38 @@ async function loadSessions() {
 }
 async function checkOut(id) { try { const result = await api(`/api/sessions/${id}/check-out`, { method: 'POST', body: '{}' }); alert(`Vehicle checked out. Fee: £${result.fee} (${result.hours_charged} hour${result.hours_charged === 1 ? '' : 's'} charged)`); await refresh(); } catch (error) { alert(error.message); } }
 $('#checkin-form').addEventListener('submit', async (event) => { event.preventDefault(); $('#checkin-error').textContent = ''; try { const result = await api('/api/sessions/check-in', { method: 'POST', body: JSON.stringify({ plate: $('#plate').value, driver_name: $('#driver').value, vehicle_type: $('#vehicle').value }) }); $('#checkin-form').reset(); alert(`Assigned ${result.session.spot_number} to ${result.session.plate}`); await refresh(); } catch (error) { $('#checkin-error').textContent = error.message; } });
+$('#import-rates').addEventListener('click', async () => {
+  try {
+    const raw = $('#rate-card').value.trim();
+    if (!raw) throw new Error('Paste a rate card first');
+    const result = await api('/api/rates/import', { method: 'POST', body: JSON.stringify({ garage_id: 1, rates: raw }) });
+    const summary = Object.entries(result.rates).map(([type, values]) => `${type}: £${(values.first_hour_rate / 100).toFixed(2)}`).join(' • ');
+    setStatus(`Imported rates: ${summary}`);
+    await refresh();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+});
+$('#run-clock').addEventListener('click', async () => {
+  try {
+    const result = await api('/clock', { method: 'POST', body: JSON.stringify({}) });
+    setStatus(result.message || `Closed ${result.closed_sessions} session(s)`);
+    await refresh();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+});
+$('#transfer-session').addEventListener('click', async () => {
+  try {
+    const sessionId = $('#transfer-id').value.trim();
+    const plate = $('#transfer-plate').value.trim();
+    if (!sessionId || !plate) throw new Error('Session ID and new plate are required');
+    const result = await api(`/api/sessions/${sessionId}/transfer`, { method: 'POST', body: JSON.stringify({ plate }) });
+    setStatus(`Transferred to ${result.session.plate} on ${result.session.spot_number}`);
+    await refresh();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+});
 let searchTimer; $('#search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page = 1; loadSessions(); }, 250); }); $('#sort').addEventListener('change', () => { page = 1; loadSessions(); }); $('#prev').addEventListener('click', () => { page -= 1; loadSessions(); }); $('#next').addEventListener('click', () => { page += 1; loadSessions(); });
 if (token) showApp();
