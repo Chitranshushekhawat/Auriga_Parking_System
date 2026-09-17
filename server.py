@@ -324,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     init_db()
     port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"Auriga Parking running at http://127.0.0.1:{port}")
     try:
         server.serve_forever()
